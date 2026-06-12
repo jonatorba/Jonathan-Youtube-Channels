@@ -60,6 +60,7 @@
             border-radius: 12px;
             overflow: hidden;
             transition: transform 0.2s;
+            cursor: pointer;
         }
         .video-card:hover {
             transform: scale(1.02);
@@ -195,12 +196,83 @@
         .clear-btn {
             background: #ff4d4d !important;
         }
+        
+        /* Modal for embedded video */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            position: relative;
+            width: 90%;
+            max-width: 1200px;
+            background: #000;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        .modal iframe {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            border: none;
+        }
+        .close-modal {
+            position: absolute;
+            top: -40px;
+            right: 0;
+            background: #ff4d4d;
+            color: white;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 5px 15px;
+            border-radius: 8px;
+            transition: 0.2s;
+        }
+        .close-modal:hover {
+            background: #ff6666;
+        }
+        
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+            .category-title {
+                font-size: 1.4rem;
+            }
+            .video-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+            .input-group {
+                flex-direction: column;
+            }
+            select {
+                width: 100%;
+            }
+            .modal-content {
+                width: 95%;
+            }
+            .close-modal {
+                top: -35px;
+                font-size: 20px;
+                padding: 3px 12px;
+            }
+        }
     </style>
 </head>
 <body>
 <div class="container">
     <h1>📺 Jonathan Channels</h1>
-    <div class="sub">Only today and yesterday's videos</div>
+    <div class="sub">Only today and yesterday's videos | Click any video to watch</div>
 
     <div class="add-section">
         <div class="input-group">
@@ -284,7 +356,7 @@
         saveChannels();
         renderChannelTags();
         input.value = '';
-        channelVideosCache = {}; // Clear cache
+        channelVideosCache = {};
         fetchAllCategoriesVideos();
     }
 
@@ -394,11 +466,9 @@
             
             allVideos.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
             
-            // FILTER: ONLY today OR yesterday videos
             const todaysVideos = allVideos.filter(v => isToday(v.publishedAt));
             const yesterdaysVideos = allVideos.filter(v => isYesterday(v.publishedAt));
             
-            // Combine: today first, then yesterday
             const displayVideos = [...todaysVideos, ...yesterdaysVideos];
             
             const todayCount = todaysVideos.length;
@@ -442,17 +512,18 @@
             const isYesterdayVideo = isYesterday(video.publishedAt);
             const badge = isTodayVideo ? '<span class="today-badge">NEW TODAY</span>' : (isYesterdayVideo ? '<span class="yesterday-badge">YESTERDAY</span>' : '');
             
+            // Create embed URL with autoplay
+            const embedUrl = `https://www.youtube.com/embed/${video.id}?autoplay=1&rel=0`;
+            
             return `
-                <a href="${video.videoUrl}" target="_blank" style="text-decoration: none; color: inherit;">
-                    <div class="video-card">
-                        <img src="${video.thumbnail}" alt="${escapeHtml(video.title)}">
-                        <div class="video-info">
-                            <div class="video-title">${escapeHtml(video.title)}${badge}</div>
-                            <div class="video-channel">${escapeHtml(video.channelName)}</div>
-                            <div class="video-date">${formatDate(video.publishedAt)}</div>
-                        </div>
+                <div class="video-card" onclick="openVideoModal('${embedUrl}', '${escapeHtml(video.title)}')">
+                    <img src="${video.thumbnail}" alt="${escapeHtml(video.title)}">
+                    <div class="video-info">
+                        <div class="video-title">${escapeHtml(video.title)}${badge}</div>
+                        <div class="video-channel">${escapeHtml(video.channelName)}</div>
+                        <div class="video-date">${formatDate(video.publishedAt)}</div>
                     </div>
-                </a>
+                </div>
             `;
         }).join('');
     }
@@ -505,9 +576,56 @@
         });
     }
 
+    // ========== MODAL FUNCTIONS FOR EMBEDDED VIDEO ==========
+    
+    function openVideoModal(embedUrl, title) {
+        let modal = document.getElementById('videoModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'videoModal';
+            modal.className = 'modal';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <button class="close-modal" onclick="closeVideoModal()">✖</button>
+                    <iframe id="videoIframe" src="" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+        
+        const iframe = document.getElementById('videoIframe');
+        iframe.src = embedUrl;
+        modal.style.display = 'flex';
+        
+        // Close with ESC key
+        const escHandler = function(e) {
+            if (e.key === 'Escape') {
+                closeVideoModal();
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
+    }
+    
+    function closeVideoModal() {
+        const modal = document.getElementById('videoModal');
+        if (modal) {
+            const iframe = document.getElementById('videoIframe');
+            iframe.src = ''; // Stop video
+            modal.style.display = 'none';
+        }
+    }
+    
+    // Close modal when clicking outside the content
+    document.addEventListener('click', function(e) {
+        const modal = document.getElementById('videoModal');
+        if (modal && modal.style.display === 'flex') {
+            if (e.target === modal) closeVideoModal();
+        }
+    });
+
     // ========== EXPORT / IMPORT FUNCTIONS ==========
     
-    // Export channels to file
     document.getElementById('exportBtn')?.addEventListener('click', () => {
         if (channels.length === 0) {
             alert('No channels to export. Add some channels first.');
@@ -524,7 +642,6 @@
         alert(`✅ Exported ${channels.length} channels successfully!`);
     });
 
-    // Import channels from file
     document.getElementById('importBtn')?.addEventListener('click', () => {
         const input = document.createElement('input');
         input.type = 'file';
@@ -537,13 +654,6 @@
                 try {
                     const imported = JSON.parse(event.target.result);
                     if (Array.isArray(imported)) {
-                        // Validate each channel has required fields
-                        let validCount = 0;
-                        imported.forEach(ch => {
-                            if (ch.id && ch.name && ch.category) {
-                                validCount++;
-                            }
-                        });
                         channels = imported;
                         saveChannels();
                         renderChannelTags();
@@ -562,7 +672,6 @@
         input.click();
     });
 
-    // Clear all channels
     document.getElementById('clearBtn')?.addEventListener('click', () => {
         if (channels.length === 0) {
             alert('No channels to clear.');
@@ -578,7 +687,6 @@
         }
     });
 
-    // Instructions for getting Channel ID
     document.getElementById('howToLink')?.addEventListener('click', (e) => {
         e.preventDefault();
         alert("How to get a YouTube Channel ID:\n\n1. Go to any YouTube channel page\n2. Right-click → View Page Source\n3. Ctrl+F (or Cmd+F) and search for 'channelId'\n4. Copy the value (starts with UC...)\n\nOr use a site like commentpicker.com/youtube-channel-id.php");
